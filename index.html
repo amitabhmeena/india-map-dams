@@ -114,7 +114,7 @@ require([
     }
   });
 
-  /* 🗺️ 2D Boundary layers */
+  /* 🗺️ Boundary layers (2D only) */
   const stateLayer = new MapImageLayer({
     url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/State_Boundary/MapServer",
     visible: true
@@ -146,10 +146,12 @@ require([
     ground: "world-elevation"
   });
 
-  /* 🔴 Dam layer (ON by default) */
-  const damLayer = new GraphicsLayer({ visible: true });
-  map2D.add(damLayer);
-  map3D.add(damLayer);
+  /* 🔴 Dam layers (SEPARATE) */
+  const damLayer2D = new GraphicsLayer({ visible: true });
+  const damLayer3D = new GraphicsLayer({ visible: true });
+
+  map2D.add(damLayer2D);
+  map3D.add(damLayer3D);
 
   /* Views */
   const mapView = new MapView({
@@ -165,6 +167,11 @@ require([
     center: [78.9629, 22.5937],
     zoom: 4
   });
+
+  /* Improve 3D performance */
+  sceneView.qualityProfile = "low";
+  sceneView.environment.atmosphereEnabled = false;
+  sceneView.environment.starsEnabled = false;
 
   viewMode.value = "2d";
 
@@ -194,7 +201,10 @@ require([
   watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
 
   /* Dam toggle */
-  damChk.onchange = () => damLayer.visible = damChk.checked;
+  damChk.onchange = () => {
+    damLayer2D.visible = damChk.checked;
+    damLayer3D.visible = damChk.checked;
+  };
 
   /* DMS → Decimal */
   function dmsToDecimal(dms) {
@@ -213,7 +223,18 @@ require([
         const lon = dmsToDecimal(dam.Longitude);
         if (!lat || !lon) return;
 
-        damLayer.add(new Graphic({
+        const popupTemplate = {
+          title: dam.Name_of_Dam,
+          content: `
+            <b>State:</b> ${dam.State}<br>
+            <b>District:</b> ${dam.District}<br>
+            <b>Purpose:</b> ${dam.Purpose}<br>
+            <b>Year:</b> ${dam["Year of completion"]}
+          `
+        };
+
+        // 2D graphic
+        damLayer2D.add(new Graphic({
           geometry: { type: "point", latitude: lat, longitude: lon },
           symbol: {
             type: "simple-marker",
@@ -221,23 +242,29 @@ require([
             size: 6,
             outline: { color: "white", width: 1 }
           },
-          popupTemplate: {
-            title: dam.Name_of_Dam,
-            content: `
-              <b>State:</b> ${dam.State}<br>
-              <b>District:</b> ${dam.District}<br>
-              <b>Purpose:</b> ${dam.Purpose}<br>
-              <b>Year:</b> ${dam["Year of completion"]}
-            `
-          }
+          popupTemplate
+        }));
+
+        // 3D graphic (smaller, faster)
+        damLayer3D.add(new Graphic({
+          geometry: { type: "point", latitude: lat, longitude: lon },
+          symbol: {
+            type: "simple-marker",
+            color: "red",
+            size: 4,
+            outline: { color: "white", width: 0.5 }
+          },
+          popupTemplate
         }));
       });
     });
 
   /* Hover popup (2D only) */
   mapView.on("pointer-move", event => {
+    if (viewMode.value !== "2d") return;
+
     mapView.hitTest(event).then(resp => {
-      const hit = resp.results.find(r => r.graphic.layer === damLayer);
+      const hit = resp.results.find(r => r.graphic.layer === damLayer2D);
       if (hit) {
         mapView.popup.open({
           location: hit.graphic.geometry,
