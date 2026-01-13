@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>India Map – 2D / 3D Boundaries & Dams</title>
+  <title>India Map – Boundaries & Dams</title>
 
   <link rel="stylesheet" href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
   <script src="https://js.arcgis.com/4.29/"></script>
@@ -51,13 +51,7 @@
 
 <div id="controls">
 
-  <div class="section">View Mode</div>
-  <select id="viewMode">
-    <option value="2d">2D Map</option>
-    <option value="3d">3D Scene (Satellite)</option>
-  </select>
-
-  <div class="section">Basemap (2D)</div>
+  <div class="section">Basemap</div>
   <select id="basemapSelect">
     <option value="topo">Topographic (Default)</option>
     <option value="satellite">Satellite</option>
@@ -65,7 +59,7 @@
     <option value="none">No basemap</option>
   </select>
 
-  <div class="section">Boundaries (2D)</div>
+  <div class="section">Boundaries</div>
   <label><input type="checkbox" id="stateChk" checked> State Boundary</label>
   <label><input type="checkbox" id="districtChk"> District Boundary</label>
   <label><input type="checkbox" id="riverChk"> River</label>
@@ -82,14 +76,15 @@
 require([
   "esri/Map",
   "esri/views/MapView",
-  "esri/views/SceneView",
   "esri/layers/MapImageLayer",
   "esri/layers/GraphicsLayer",
   "esri/Graphic",
+  "esri/widgets/Search",
   "esri/config"
 ], function (
-  Map, MapView, SceneView,
-  MapImageLayer, GraphicsLayer, Graphic, esriConfig
+  Map, MapView,
+  MapImageLayer, GraphicsLayer, Graphic,
+  Search, esriConfig
 ) {
 
   /* 🔐 Bharat Map token interceptor */
@@ -114,7 +109,7 @@ require([
     }
   });
 
-  /* 🗺️ Boundary layers (2D only) */
+  /* 🗺️ Boundary layers */
   const stateLayer = new MapImageLayer({
     url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/State_Boundary/MapServer",
     visible: true
@@ -135,76 +130,50 @@ require([
     visible: false
   });
 
-  /* 🗺️ Maps */
-  const map2D = new Map({
+  /* 🔴 Dam layer */
+  const damLayer = new GraphicsLayer({ visible: true });
+
+  /* 🗺️ Map */
+  const map = new Map({
     basemap: "topo-vector",
-    layers: [stateLayer, districtLayer, riverLayer, watershedLayer]
+    layers: [
+      stateLayer,
+      districtLayer,
+      riverLayer,
+      watershedLayer,
+      damLayer
+    ]
   });
 
-  const map3D = new Map({
-    basemap: "satellite",
-    ground: "world-elevation"
-  });
+  /* 🇮🇳 India extent (correct initial view) */
+  const indiaExtent = {
+    xmin: 68,
+    ymin: 6,
+    xmax: 97,
+    ymax: 37,
+    spatialReference: { wkid: 4326 }
+  };
 
-  /* 🔴 Dam layers (SEPARATE) */
-  const damLayer2D = new GraphicsLayer({ visible: true });
-  const damLayer3D = new GraphicsLayer({ visible: true });
-
-  map2D.add(damLayer2D);
-  map3D.add(damLayer3D);
-
-  /* Views */
-  const mapView = new MapView({
+  const view = new MapView({
     container: "viewDiv",
-    map: map2D,
-    center: [78.9629, 22.5937],
-    zoom: 4
+    map: map,
+    extent: indiaExtent
   });
 
-  const sceneView = new SceneView({
-    container: null,
-    map: map3D,
-    center: [78.9629, 22.5937],
-    zoom: 4
-  });
-
-  /* Improve 3D performance */
-  sceneView.qualityProfile = "low";
-  sceneView.environment.atmosphereEnabled = false;
-  sceneView.environment.starsEnabled = false;
-
-  viewMode.value = "2d";
-
-  /* View switch */
-  viewMode.onchange = () => {
-    if (viewMode.value === "3d") {
-      mapView.container = null;
-      sceneView.container = "viewDiv";
-    } else {
-      sceneView.container = null;
-      mapView.container = "viewDiv";
-    }
-  };
-
-  /* Basemap switch (2D only) */
+  /* Basemap switch */
   basemapSelect.onchange = () => {
-    if (basemapSelect.value === "none") map2D.basemap = null;
-    else if (basemapSelect.value === "satellite") map2D.basemap = "satellite";
-    else if (basemapSelect.value === "streets") map2D.basemap = "streets-vector";
-    else map2D.basemap = "topo-vector";
+    if (basemapSelect.value === "none") map.basemap = null;
+    else if (basemapSelect.value === "satellite") map.basemap = "satellite";
+    else if (basemapSelect.value === "streets") map.basemap = "streets-vector";
+    else map.basemap = "topo-vector";
   };
 
-  /* Boundary toggles */
+  /* Layer toggles */
   stateChk.onchange = () => stateLayer.visible = stateChk.checked;
   districtChk.onchange = () => districtLayer.visible = districtChk.checked;
   riverChk.onchange = () => riverLayer.visible = riverChk.checked;
   watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
-
-  /* Dam toggle */
-  damChk.onchange = () => {
-    damLayer2D.visible = damChk.checked;
-    damLayer3D.visible = damChk.checked;
-  };
+  damChk.onchange = () => damLayer.visible = damChk.checked;
 
   /* DMS → Decimal */
   function dmsToDecimal(dms) {
@@ -223,56 +192,58 @@ require([
         const lon = dmsToDecimal(dam.Longitude);
         if (!lat || !lon) return;
 
-        const popupTemplate = {
-          title: dam.Name_of_Dam,
-          content: `
-            <b>State:</b> ${dam.State}<br>
-            <b>District:</b> ${dam.District}<br>
-            <b>Purpose:</b> ${dam.Purpose}<br>
-            <b>Year:</b> ${dam["Year of completion"]}
-          `
-        };
-
-        // 2D graphic
-        damLayer2D.add(new Graphic({
+        damLayer.add(new Graphic({
           geometry: { type: "point", latitude: lat, longitude: lon },
+          attributes: dam,
           symbol: {
             type: "simple-marker",
-            color: "red",
-            size: 6,
-            outline: { color: "white", width: 1 }
+            color: [255, 0, 0, 0.9],
+            size: 7,
+            outline: { color: "white", width: 1.5 }
           },
-          popupTemplate
-        }));
-
-        // 3D graphic (smaller, faster)
-        damLayer3D.add(new Graphic({
-          geometry: { type: "point", latitude: lat, longitude: lon },
-          symbol: {
-            type: "simple-marker",
-            color: "red",
-            size: 4,
-            outline: { color: "white", width: 0.5 }
-          },
-          popupTemplate
+          popupTemplate: {
+            title: "{Name_of_Dam}",
+            content: `
+              <b>State:</b> {State}<br>
+              <b>District:</b> {District}<br>
+              <b>Purpose:</b> {Purpose}<br>
+              <b>Year:</b> {Year of completion}
+            `
+          }
         }));
       });
+
+      /* 🔍 Search widget (DAM NAME SEARCH) */
+      const search = new Search({
+        view: view,
+        allPlaceholder: "Search dam name",
+        includeDefaultSources: false,
+        sources: [{
+          layer: damLayer,
+          searchFields: ["Name_of_Dam"],
+          displayField: "Name_of_Dam",
+          exactMatch: false,
+          outFields: ["*"],
+          name: "Dams",
+          placeholder: "Type dam name"
+        }]
+      });
+
+      view.ui.add(search, "top-right");
     });
 
-  /* Hover popup (2D only) */
-  mapView.on("pointer-move", event => {
-    if (viewMode.value !== "2d") return;
-
-    mapView.hitTest(event).then(resp => {
-      const hit = resp.results.find(r => r.graphic.layer === damLayer2D);
+  /* Hover popup */
+  view.on("pointer-move", event => {
+    view.hitTest(event).then(resp => {
+      const hit = resp.results.find(r => r.graphic.layer === damLayer);
       if (hit) {
-        mapView.popup.open({
+        view.popup.open({
           location: hit.graphic.geometry,
-          title: hit.graphic.popupTemplate.title,
+          title: hit.graphic.attributes.Name_of_Dam,
           content: ""
         });
       } else {
-        mapView.popup.close();
+        view.popup.close();
       }
     });
   });
