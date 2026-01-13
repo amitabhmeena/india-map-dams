@@ -297,10 +297,15 @@ require([
         results.style.display = "none";
         damSearch.value = g.attributes.Name_of_Dam;
         view.goTo(
-          { target: g.geometry, zoom: 11 },
-          { duration: 2000 }
-        );
-        view.popup.open({ location: g.geometry });
+  { target: g.geometry, zoom: 11 },
+  { duration: 2000 }
+);
+
+view.popup.open({
+  features: [g],      // ✅ bind popup to selected dam
+  location: g.geometry
+});
+
       };
       results.appendChild(div);
     });
