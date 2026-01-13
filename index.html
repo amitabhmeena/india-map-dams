@@ -56,7 +56,6 @@ input[type="text"], select {
   padding: 6px;
   cursor: pointer;
 }
-
 .result-item:hover {
   background: #f0f0f0;
 }
@@ -163,7 +162,6 @@ require([
     extent: { xmin: 68, ymin: 6, xmax: 97, ymax: 37, spatialReference: { wkid: 4326 } }
   });
 
-  /* UI bindings */
   basemapSelect.onchange = () => {
     map.basemap =
       basemapSelect.value === "none" ? null :
@@ -183,6 +181,13 @@ require([
   }
 
   const damGraphics = [];
+
+  function formatLabel(name) {
+    const parts = name.split(" ");
+    if (parts.length <= 2) return name;
+    const mid = Math.ceil(parts.length / 2);
+    return parts.slice(0, mid).join(" ") + "\n" + parts.slice(mid).join(" ");
+  }
 
   fetch("dams.json")
     .then(r => r.json())
@@ -218,28 +223,24 @@ require([
         damGraphics.push(damGraphic);
         damLayer.add(damGraphic);
 
-        /* 🔶 LABEL ONLY FOR LARGE DAMS */
         if (isLarge) {
           labelLayer.add(new Graphic({
             geometry: damGraphic.geometry,
             symbol: new TextSymbol({
-              text: dam.Name_of_Dam,
+              text: formatLabel(dam.Name_of_Dam),
               color: "orange",
-              haloColor: "white",
-              haloSize: "1px",
               font: {
-                size: 10,
+                size: 7,
                 family: "Arial",
                 weight: "bold"
               },
-              yoffset: 10
+              yoffset: 8
             })
           }));
         }
       });
     });
 
-  /* 🔍 Autocomplete search with smooth zoom */
   damSearch.addEventListener("input", function () {
     const q = this.value.toLowerCase();
     results.innerHTML = "";
