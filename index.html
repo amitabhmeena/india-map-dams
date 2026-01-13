@@ -15,8 +15,7 @@ html, body, #viewDiv {
   width: 100%;
 }
 
-/* LEFT PANEL: Basemap + Layers */
-#controls-left {
+#controls {
   position: absolute;
   top: 12px;
   left: 12px;
@@ -26,22 +25,7 @@ html, body, #viewDiv {
   font-family: Arial, sans-serif;
   font-size: 13px;
   box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-  width: 320px;
-  border-radius: 10px;
-}
-
-/* RIGHT PANEL: Search */
-#controls-right {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: white;
-  padding: 14px;
-  z-index: 99;
-  font-family: Arial, sans-serif;
-  font-size: 13px;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-  width: 300px;
+  width: 340px;
   border-radius: 10px;
 }
 
@@ -80,9 +64,14 @@ input[type="text"], select {
 
 <body>
 
-<!-- LEFT: Basemap & Layers -->
-<div id="controls-left">
+<div id="controls">
 
+  <!-- Search -->
+  <div class="section">Search Dam</div>
+  <input type="text" id="damSearch" placeholder="Type dam name…" />
+  <div id="results"></div>
+
+  <!-- Basemap -->
   <div class="section">Basemap</div>
   <select id="basemapSelect">
     <option value="satellite" selected>Satellite</option>
@@ -91,6 +80,7 @@ input[type="text"], select {
     <option value="none">No basemap</option>
   </select>
 
+  <!-- Layers -->
   <div class="section">Layers</div>
   <label><input type="checkbox" id="stateChk" checked> State Boundary</label><br>
   <label><input type="checkbox" id="districtChk"> District Boundary</label><br>
@@ -98,13 +88,6 @@ input[type="text"], select {
   <label><input type="checkbox" id="watershedChk"> Watershed</label><br>
   <label><input type="checkbox" id="damChk" checked> Dams</label>
 
-</div>
-
-<!-- RIGHT: Search -->
-<div id="controls-right">
-  <div class="section">Search Dam</div>
-  <input type="text" id="damSearch" placeholder="Type dam name…" />
-  <div id="results"></div>
 </div>
 
 <div id="viewDiv"></div>
@@ -197,6 +180,7 @@ require([
   districtChk.onchange = () => districtLayer.visible = districtChk.checked;
   riverChk.onchange = () => riverLayer.visible = riverChk.checked;
   watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
+
   damChk.onchange = () => {
     damLayer.visible = damChk.checked;
     largeLabelLayer.visible = damChk.checked && view.zoom >= 7;
@@ -274,7 +258,7 @@ require([
     smallLabelLayer.visible = (z >= 10);
   });
 
-  /* Search */
+  /* Search with smooth zoom */
   damSearch.addEventListener("input", function () {
     const q = this.value.toLowerCase();
     results.innerHTML = "";
