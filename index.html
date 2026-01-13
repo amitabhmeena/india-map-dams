@@ -25,8 +25,8 @@ html, body, #viewDiv {
   font-family: Arial, sans-serif;
   font-size: 13px;
   box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-  width: 340px;              /* FIX 1: wider box */
-  border-radius: 10px;       /* FIX 2: rounded corners */
+  width: 340px;
+  border-radius: 10px;
 }
 
 .section {
@@ -38,7 +38,7 @@ input[type="text"], select {
   width: 100%;
   padding: 8px;
   margin-top: 6px;
-  border-radius: 6px;        /* FIX 3: rounded inputs */
+  border-radius: 6px;
   border: 1px solid #ccc;
   box-sizing: border-box;
 }
@@ -97,13 +97,14 @@ require([
   "esri/layers/MapImageLayer",
   "esri/layers/GraphicsLayer",
   "esri/Graphic",
+  "esri/symbols/TextSymbol",
   "esri/config"
 ], function (
   Map, MapView,
-  MapImageLayer, GraphicsLayer, Graphic, esriConfig
+  MapImageLayer, GraphicsLayer, Graphic, TextSymbol, esriConfig
 ) {
 
-  /* 🔐 Token interceptor */
+  /* Token interceptor */
   esriConfig.request.interceptors.push({
     urls: /mapservice\.gov\.in/,
     before: p => {
@@ -142,10 +143,18 @@ require([
   });
 
   const damLayer = new GraphicsLayer({ visible: true });
+  const labelLayer = new GraphicsLayer({ visible: true });
 
   const map = new Map({
     basemap: "topo-vector",
-    layers: [stateLayer, districtLayer, riverLayer, watershedLayer, damLayer]
+    layers: [
+      stateLayer,
+      districtLayer,
+      riverLayer,
+      watershedLayer,
+      damLayer,
+      labelLayer
+    ]
   });
 
   const view = new MapView({
@@ -154,6 +163,7 @@ require([
     extent: { xmin: 68, ymin: 6, xmax: 97, ymax: 37, spatialReference: { wkid: 4326 } }
   });
 
+  /* UI bindings */
   basemapSelect.onchange = () => {
     map.basemap =
       basemapSelect.value === "none" ? null :
@@ -162,11 +172,10 @@ require([
       "topo-vector";
   };
 
-  stateChk.onchange = () => stateLayer.visible = stateChk.checked;
-  districtChk.onchange = () => districtLayer.visible = districtChk.checked;
-  riverChk.onchange = () => riverLayer.visible = riverChk.checked;
-  watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
-  damChk.onchange = () => damLayer.visible = damChk.checked;
+  damChk.onchange = () => {
+    damLayer.visible = damChk.checked;
+    labelLayer.visible = damChk.checked;
+  };
 
   function dmsToDecimal(dms) {
     const p = dms?.match(/\d+/g);
@@ -178,6 +187,7 @@ require([
   fetch("dams.json")
     .then(r => r.json())
     .then(json => {
+
       json.data.forEach(dam => {
 
         const lat = dmsToDecimal(dam.Latitude);
@@ -185,31 +195,10 @@ require([
         if (!lat || !lon) return;
 
         const storage = Number(dam["Gross Storage Capacity(mcm)"]);
-        const symbolSize = (!isNaN(storage) && storage >= 500) ? 5 : 2;
+        const isLarge = (!isNaN(storage) && storage >= 500);
+        const symbolSize = isLarge ? 5 : 2;
 
-        const popupContent = `
-          <b>PIC:</b> ${dam.PIC || "-"}<br>
-          <b>SDSO:</b> ${dam.SDSO || "-"}<br>
-          <b>State:</b> ${dam.State || "-"}<br>
-          <b>District:</b> ${dam.District || "-"}<br>
-          <b>River:</b> ${dam.River || "-"}<br>
-          <b>Dam Incharge:</b> ${dam.Dam_Incharge || "-"}<br>
-          <b>Height above LFL (m):</b> ${dam["Height above Lowest Foundation Level(m)"] || "-"}<br>
-          <b>Year of completion:</b> ${dam["Year of completion"] || "-"}<br>
-          <b>Basin:</b> ${dam.Basin || "-"}<br>
-          <b>Max Water Level (m):</b> ${dam["Max. Water Level(m) "] || "-"}<br>
-          <b>Full Reservoir Level (m):</b> ${dam["Full Reservoir Level(m)"] || "-"}<br>
-          <b>Gross Storage (MCM):</b> ${dam["Gross Storage Capacity(mcm)"] || "-"}<br>
-          <b>Designed Spillway Capacity:</b> ${dam["Designed Spillway Capacity"] || "-"}<br>
-          <b>Dam Length:</b> ${dam["Dam length"] || "-"}<br>
-          <b>Dam Type:</b> ${dam.dam_type || "-"}<br>
-          <b>Population at Risk:</b> ${dam.population_at_risk || "-"}<br>
-          <b>Purpose:</b> ${dam.Purpose || "-"}<br>
-          <b>Latitude:</b> ${dam.Latitude || "-"}<br>
-          <b>Longitude:</b> ${dam.Longitude || "-"}
-        `;
-
-        const g = new Graphic({
+        const damGraphic = new Graphic({
           geometry: { type: "point", latitude: lat, longitude: lon },
           attributes: dam,
           symbol: {
@@ -220,16 +209,37 @@ require([
           },
           popupTemplate: {
             title: dam.Name_of_Dam,
-            content: popupContent
+            content: Object.entries(dam)
+              .map(([k,v]) => `<b>${k}:</b> ${v ?? "-"}`)
+              .join("<br>")
           }
         });
 
-        damGraphics.push(g);
-        damLayer.add(g);
+        damGraphics.push(damGraphic);
+        damLayer.add(damGraphic);
+
+        /* 🔶 LABEL ONLY FOR LARGE DAMS */
+        if (isLarge) {
+          labelLayer.add(new Graphic({
+            geometry: damGraphic.geometry,
+            symbol: new TextSymbol({
+              text: dam.Name_of_Dam,
+              color: "orange",
+              haloColor: "white",
+              haloSize: "1px",
+              font: {
+                size: 10,
+                family: "Arial",
+                weight: "bold"
+              },
+              yoffset: 10
+            })
+          }));
+        }
       });
     });
 
-  /* Autocomplete search */
+  /* 🔍 Autocomplete search with smooth zoom */
   damSearch.addEventListener("input", function () {
     const q = this.value.toLowerCase();
     results.innerHTML = "";
@@ -250,7 +260,10 @@ require([
       div.onclick = () => {
         results.style.display = "none";
         damSearch.value = g.attributes.Name_of_Dam;
-        view.goTo({ target: g.geometry, zoom: 10 });
+        view.goTo(
+          { target: g.geometry, zoom: 10 },
+          { duration: 2000, easing: "ease-in-out" }
+        );
         view.popup.open({
           location: g.geometry,
           title: g.attributes.Name_of_Dam
