@@ -25,12 +25,9 @@ html, body, #viewDiv {
   max-width: 300px;
 }
 
-.section {
-  font-weight: bold;
-  margin-top: 8px;
-}
+.section { font-weight: bold; margin-top: 8px; }
 
-input[type="text"] {
+input[type="text"], select {
   width: 100%;
   padding: 6px;
   margin-top: 5px;
@@ -47,10 +44,7 @@ input[type="text"] {
   padding: 5px;
   cursor: pointer;
 }
-
-.result-item:hover {
-  background: #f0f0f0;
-}
+.result-item:hover { background: #f0f0f0; }
 </style>
 </head>
 
@@ -91,6 +85,13 @@ require([
   "esri/config"
 ], function(Map, MapView, MapImageLayer, GraphicsLayer, Graphic, esriConfig) {
 
+/* ------------------ CONFIG ------------------ */
+const MIN_SIZE = 2;
+const MAX_SIZE = 5;
+const ZOOM_MIN = 4;
+const ZOOM_MAX = 10;
+
+/* ------------------ TOKENS ------------------ */
 esriConfig.request.interceptors.push({
   urls: /mapservice\.gov\.in/,
   before: p => {
@@ -107,7 +108,7 @@ esriConfig.request.interceptors.push({
   }
 });
 
-/* Layers */
+/* ------------------ LAYERS ------------------ */
 const stateLayer = new MapImageLayer({
   url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/State_Boundary/MapServer",
   visible: true
@@ -138,7 +139,7 @@ const view = new MapView({
   extent: { xmin: 68, ymin: 6, xmax: 97, ymax: 37, spatialReference: { wkid: 4326 } }
 });
 
-/* UI bindings */
+/* ------------------ UI ------------------ */
 basemapSelect.onchange = () => {
   map.basemap =
     basemapSelect.value === "none" ? null :
@@ -153,18 +154,29 @@ riverChk.onchange = () => riverLayer.visible = riverChk.checked;
 watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
 damChk.onchange = () => damLayer.visible = damChk.checked;
 
-/* Helpers */
+/* ------------------ HELPERS ------------------ */
 function dmsToDecimal(dms) {
   const p = dms?.match(/\d+/g);
   return p ? (+p[0] + p[1]/60 + (p[2]||0)/3600) : null;
 }
 
 const damGraphics = [];
+let minLog = Infinity, maxLog = -Infinity;
 
-/* Load dams */
+/* ------------------ LOAD DAMS ------------------ */
 fetch("dams.json")
 .then(r => r.json())
 .then(json => {
+
+  json.data.forEach(d => {
+    const v = Number(d["Gross Storage Capacity(mcm)"]);
+    if (!isNaN(v) && v > 0) {
+      const lv = Math.log10(v);
+      minLog = Math.min(minLog, lv);
+      maxLog = Math.max(maxLog, lv);
+    }
+  });
+
   json.data.forEach(dam => {
     const lat = dmsToDecimal(dam.Latitude);
     const lon = dmsToDecimal(dam.Longitude);
@@ -173,28 +185,49 @@ fetch("dams.json")
     const g = new Graphic({
       geometry: { type: "point", latitude: lat, longitude: lon },
       attributes: dam,
-      symbol: {
-        type: "simple-marker",
-        color: [0,102,204,0.9],
-        size: 3,
-        outline: null
-      },
+      symbol: { type: "simple-marker", color: [0,102,204,0.9], size: MIN_SIZE, outline: null },
       popupTemplate: {
         title: "{Name_of_Dam}",
-        content: `
-          <b>State:</b> {State}<br>
-          <b>District:</b> {District}<br>
-          <b>Purpose:</b> {Purpose}
-        `
+        content: `<b>Gross Storage (MCM):</b> ${dam["Gross Storage Capacity(mcm)"]}`
       }
     });
 
     damGraphics.push(g);
     damLayer.add(g);
   });
+
+  updateSymbolSizes();
 });
 
-/* 🔍 AUTOCOMPLETE SEARCH */
+/* ------------------ SIZE UPDATE ------------------ */
+function updateSymbolSizes() {
+  const zoomFactor = Math.min(1, Math.max(0,
+    (view.zoom - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)
+  ));
+
+  damGraphics.forEach(g => {
+    const v = Number(g.attributes["Gross Storage Capacity(mcm)"]);
+    let baseSize = MIN_SIZE;
+
+    if (!isNaN(v) && v > 0 && maxLog > minLog) {
+      const lv = Math.log10(v);
+      baseSize =
+        MIN_SIZE + (lv - minLog) * (MAX_SIZE - MIN_SIZE) / (maxLog - minLog);
+    }
+
+    g.symbol = {
+      type: "simple-marker",
+      color: [0,102,204,0.9],
+      outline: null,
+      size: baseSize * (0.7 + 0.6 * zoomFactor)
+    };
+  });
+}
+
+/* ------------------ ZOOM LISTENER ------------------ */
+view.watch("zoom", updateSymbolSizes);
+
+/* ------------------ SEARCH ------------------ */
 damSearch.addEventListener("input", function() {
   const q = this.value.toLowerCase();
   results.innerHTML = "";
@@ -216,11 +249,7 @@ damSearch.addEventListener("input", function() {
       results.style.display = "none";
       damSearch.value = g.attributes.Name_of_Dam;
       view.goTo({ target: g.geometry, zoom: 10 });
-      view.popup.open({
-        location: g.geometry,
-        title: g.attributes.Name_of_Dam,
-        content: ""
-      });
+      view.popup.open({ location: g.geometry, title: g.attributes.Name_of_Dam });
     };
     results.appendChild(div);
   });
