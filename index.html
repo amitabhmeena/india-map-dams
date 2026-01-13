@@ -15,7 +15,6 @@ html, body, #viewDiv {
   width: 100%;
 }
 
-/* MAIN CONTROL BOX */
 #controls {
   position: absolute;
   top: 12px;
@@ -31,35 +30,15 @@ html, body, #viewDiv {
   transition: all 0.3s ease;
 }
 
-/* SEARCH ALWAYS VISIBLE */
-#search-container {
-  margin-bottom: 10px;
-}
-
-/* TOGGLES COLLAPSIBLE */
-#toggle-container {
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  overflow: hidden;
-}
-
-/* COLLAPSED STATE */
 #controls.collapsed #toggle-container {
   max-height: 0;
   opacity: 0;
+  overflow: hidden;
 }
 
-/* MOBILE ONLY BEHAVIOUR */
-@media (max-width: 768px) {
-  #controls {
-    width: 92%;
-    left: 4%;
-  }
-}
+#search-container { margin-bottom: 8px; }
 
-.section {
-  font-weight: bold;
-  margin-top: 10px;
-}
+.section { font-weight: bold; margin-top: 10px; }
 
 input[type="text"], select {
   width: 100%;
@@ -67,7 +46,6 @@ input[type="text"], select {
   margin-top: 6px;
   border-radius: 6px;
   border: 1px solid #ccc;
-  box-sizing: border-box;
 }
 
 #results {
@@ -76,15 +54,13 @@ input[type="text"], select {
   border: 1px solid #ccc;
   border-radius: 6px;
   display: none;
-  margin-top: 4px;
 }
 
-.result-item {
-  padding: 6px;
-  cursor: pointer;
-}
-.result-item:hover {
-  background: #f0f0f0;
+.result-item { padding: 6px; cursor: pointer; }
+.result-item:hover { background: #f0f0f0; }
+
+@media (max-width: 768px) {
+  #controls { width: 92%; left: 4%; }
 }
 </style>
 </head>
@@ -93,14 +69,14 @@ input[type="text"], select {
 
 <div id="controls">
 
-  <!-- SEARCH (ALWAYS VISIBLE) -->
+  <!-- SEARCH -->
   <div id="search-container">
     <div class="section">Search Dam</div>
     <input type="text" id="damSearch" placeholder="Type dam name…" />
     <div id="results"></div>
   </div>
 
-  <!-- TOGGLES (COLLAPSIBLE) -->
+  <!-- TOGGLES -->
   <div id="toggle-container">
 
     <div class="section">Basemap</div>
@@ -138,40 +114,197 @@ require([
   MapImageLayer, GraphicsLayer, Graphic, TextSymbol, esriConfig
 ) {
 
-  /* --------- MOBILE DETECTION --------- */
+  /* Mobile detection */
   const isMobile = window.matchMedia("(max-width: 768px)").matches;
   const controls = document.getElementById("controls");
 
-  function collapseControls() {
-    if (isMobile) controls.classList.add("collapsed");
-  }
+  function collapse() { if (isMobile) controls.classList.add("collapsed"); }
+  function expand() { if (isMobile) controls.classList.remove("collapsed"); }
 
-  function expandControls() {
-    if (isMobile) controls.classList.remove("collapsed");
-  }
+  /* Token interceptor */
+  esriConfig.request.interceptors.push({
+    urls: /mapservice\.gov\.in/,
+    before: p => {
+      p.requestOptions.query = p.requestOptions.query || {};
+      const u = p.url;
+      if (u.includes("State_Boundary"))
+        p.requestOptions.query.token = "B_MvXZQQA3UJQ3rriTr7Qvo4AE-8f2v0JmAgH3h17-3OVcp7agXot9jS8Q7ZPelzaaShzPs5CR7tqOeucn4Oww..";
+      else if (u.includes("District_Boundary"))
+        p.requestOptions.query.token = "KLafX5W7tKxU3qXCTtWzmiub5IsvSYcYf8OYVbFZaO_5Dlji_67_mzrUu6qCgWJ6djeLy_izw-rxbEWms3Ss0g..";
+      else if (u.includes("River"))
+        p.requestOptions.query.token = "aprsZsvhLhQlrHeo2O-9F-PWMUmaTr7awaxuyKOXtWOMMp0VVG70sfDnNltnsh3SLOqcK8zLNCvPqBThYxn5tw..";
+      else if (u.includes("Watershed"))
+        p.requestOptions.query.token = "LYFmEZL-IKy3-iAuFBbGMpNs0rPaWFMD5KuaJUT7I6OFXUWRxnUhDjR3SJfE-ndgh9aAdyua9Cs8b9POB7R51Q..";
+    }
+  });
 
-  /* --------- MAP --------- */
-  const map = new Map({ basemap: "satellite" });
+  /* Layers */
+  const stateLayer = new MapImageLayer({
+    url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/State_Boundary/MapServer",
+    visible: true
+  });
+
+  const districtLayer = new MapImageLayer({
+    url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/District_Boundary/MapServer",
+    visible: false
+  });
+
+  const riverLayer = new MapImageLayer({
+    url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/River/MapServer",
+    visible: false
+  });
+
+  const watershedLayer = new MapImageLayer({
+    url: "https://mapservice.gov.in/gismapservice/rest/services/BharatMapService/Watershed/MapServer",
+    visible: false
+  });
+
+  const damLayer = new GraphicsLayer({ visible: true });
+  const largeLabelLayer = new GraphicsLayer({ visible: false });
+  const smallLabelLayer = new GraphicsLayer({ visible: false });
+
+  const map = new Map({
+    basemap: "satellite",
+    layers: [
+      stateLayer,
+      districtLayer,
+      riverLayer,
+      watershedLayer,
+      damLayer,
+      largeLabelLayer,
+      smallLabelLayer
+    ]
+  });
+
   const view = new MapView({
     container: "viewDiv",
     map,
     extent: { xmin: 68, ymin: 6, xmax: 97, ymax: 37, spatialReference: { wkid: 4326 } }
   });
 
-  /* Collapse panel on map interaction (mobile only) */
-  view.on("drag", collapseControls);
-  view.on("mouse-wheel", collapseControls);
-  view.on("click", collapseControls);
+  /* Collapse panel on map interaction (mobile) */
+  view.on("drag", collapse);
+  view.on("mouse-wheel", collapse);
+  view.on("click", collapse);
+  document.getElementById("damSearch").addEventListener("focus", expand);
 
-  /* Expand panel when user focuses search */
-  document.getElementById("damSearch").addEventListener("focus", expandControls);
+  /* Toggle bindings */
+  basemapSelect.onchange = () => {
+    map.basemap =
+      basemapSelect.value === "none" ? null :
+      basemapSelect.value === "satellite" ? "satellite" :
+      basemapSelect.value === "streets" ? "streets-vector" :
+      "topo-vector";
+  };
 
-  /* -------------------------------
-     ⬇⬇⬇ KEEP ALL YOUR EXISTING
-     DAMS, LAYERS, SEARCH, LABEL
-     LOGIC BELOW THIS LINE
-     (UNCHANGED)
-     ------------------------------- */
+  stateChk.onchange = () => stateLayer.visible = stateChk.checked;
+  districtChk.onchange = () => districtLayer.visible = districtChk.checked;
+  riverChk.onchange = () => riverLayer.visible = riverChk.checked;
+  watershedChk.onchange = () => watershedLayer.visible = watershedChk.checked;
+
+  damChk.onchange = () => {
+    damLayer.visible = damChk.checked;
+    largeLabelLayer.visible = damChk.checked && view.zoom >= 7;
+    smallLabelLayer.visible = damChk.checked && view.zoom >= 10;
+  };
+
+  function dmsToDecimal(dms) {
+    const p = dms?.match(/\d+/g);
+    return p ? (+p[0] + p[1]/60 + (p[2]||0)/3600) : null;
+  }
+
+  function wrapLabel(name) {
+    const parts = name.split(" ");
+    if (parts.length <= 2) return name;
+    const mid = Math.ceil(parts.length / 2);
+    return parts.slice(0, mid).join(" ") + "\n" + parts.slice(mid).join(" ");
+  }
+
+  const damGraphics = [];
+
+  fetch("dams.json")
+    .then(r => r.json())
+    .then(json => {
+      json.data.forEach(dam => {
+
+        const lat = dmsToDecimal(dam.Latitude);
+        const lon = dmsToDecimal(dam.Longitude);
+        if (!lat || !lon) return;
+
+        const storage = Number(dam["Gross Storage Capacity(mcm)"]);
+        const isLarge = (!isNaN(storage) && storage >= 500);
+        const symbolSize = isLarge ? 5 : 2;
+
+        const g = new Graphic({
+          geometry: { type: "point", latitude: lat, longitude: lon },
+          attributes: dam,
+          symbol: {
+            type: "simple-marker",
+            color: [0,102,204,0.9],
+            size: symbolSize,
+            outline: null
+          },
+          popupTemplate: {
+            title: dam.Name_of_Dam,
+            content: Object.entries(dam)
+              .map(([k,v]) => `<b>${k}:</b> ${v ?? "-"}`)
+              .join("<br>")
+          }
+        });
+
+        damGraphics.push(g);
+        damLayer.add(g);
+
+        const labelGraphic = new Graphic({
+          geometry: g.geometry,
+          symbol: new TextSymbol({
+            text: wrapLabel(dam.Name_of_Dam),
+            color: "orange",
+            font: { size: 8, family: "Arial", weight: "bold" },
+            yoffset: 8
+          })
+        });
+
+        if (isLarge) largeLabelLayer.add(labelGraphic);
+        else smallLabelLayer.add(labelGraphic);
+      });
+    });
+
+  view.watch("zoom", z => {
+    largeLabelLayer.visible = (z >= 7 && damChk.checked);
+    smallLabelLayer.visible = (z >= 10 && damChk.checked);
+  });
+
+  /* Search */
+  damSearch.addEventListener("input", function () {
+    const q = this.value.toLowerCase();
+    results.innerHTML = "";
+    results.style.display = "none";
+    if (!q) return;
+
+    const matches = damGraphics
+      .filter(g => g.attributes.Name_of_Dam.toLowerCase().includes(q))
+      .slice(0, 10);
+
+    if (!matches.length) return;
+
+    results.style.display = "block";
+    matches.forEach(g => {
+      const div = document.createElement("div");
+      div.className = "result-item";
+      div.textContent = g.attributes.Name_of_Dam;
+      div.onclick = () => {
+        results.style.display = "none";
+        damSearch.value = g.attributes.Name_of_Dam;
+        view.goTo(
+          { target: g.geometry, zoom: 11 },
+          { duration: 2000 }
+        );
+        view.popup.open({ location: g.geometry });
+      };
+      results.appendChild(div);
+    });
+  });
 
 });
 </script>
