@@ -185,6 +185,11 @@ require([
   const largeLabelLayer = new GraphicsLayer({ visible: false });
   const smallLabelLayer = new GraphicsLayer({ visible: false });
 
+  const blankBasemap = {
+  baseLayers: [],
+  referenceLayers: []
+};
+
   const map = new Map({
     basemap: "satellite",
     layers: [
@@ -211,12 +216,13 @@ require([
   damSearch.addEventListener("focus", expand);
 
   basemapSelect.onchange = () => {
-    map.basemap =
-      basemapSelect.value === "none" ? null :
-      basemapSelect.value === "satellite" ? "satellite" :
-      basemapSelect.value === "streets" ? "streets-vector" :
-      "topo-vector";
-  };
+  map.basemap =
+    basemapSelect.value === "none" ? blankBasemap :
+    basemapSelect.value === "satellite" ? "satellite" :
+    basemapSelect.value === "streets" ? "streets-vector" :
+    "topo-vector";
+};
+
 
   stateChk.onchange = () => stateLayer.visible = stateChk.checked;
   districtChk.onchange = () => districtLayer.visible = districtChk.checked;
